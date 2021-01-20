@@ -1,0 +1,2 @@
+bleak==0.10.0
+service-identity==18.1.0
