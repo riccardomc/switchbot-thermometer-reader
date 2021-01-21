@@ -13,7 +13,7 @@ def decode(data):
     """
     https://github.com/OpenWonderLabs/python-host/wiki/Meter-BLE-open-API
     """
-    temperature_value = (data[4] & 0b00111111) + (data[3] & 0b00001111) / 10
+    temperature_value = (data[4] & 0b01111111) + (data[3] & 0b00001111) / 10
     temperature_sign = -1 if data[4] & 0b10000000 == 0 else 1
     temperature_scale = "C" if data[5] & 0b10000000 == 0 else "F"
     temperature_value = (
