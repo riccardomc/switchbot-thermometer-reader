@@ -7,7 +7,12 @@ import paho.mqtt.client as mqtt
 import traceback
 from datetime import datetime
 
-addresses = ["XX:XX:XX:XX:XX:XX"]
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("switchbot")
+
+addresses = set([])
 service_data_id = "00000d00-0000-1000-8000-00805f9b34fb"
 
 devices_data = {}
@@ -19,8 +24,6 @@ mqtt_password = ""
 mqtt_hostname = ""
 mqtt_hostport = 1883
 mqtt_timeout = 30
-
-debug_level = 1
 
 # FIXME: MQTT implementation taken from:
 # https://github.com/bbostock/Switchbot_Py_Meter/blob/master/meters.py
@@ -66,12 +69,15 @@ def decode(data):
 
 
 def detection_callback(device, data):
-    if device.address in addresses:
-        service_data = data.service_data.get(service_data_id)
-        if service_data:
-            decoded_service_data = decode(service_data)
-            publish(device.address, decoded_service_data)
-            devices_data[device.address] = decoded_service_data
+    service_data = data.service_data.get(service_data_id)
+    if service_data:
+        if device.address not in addresses:
+            logger.info("found device: %s" % device.address)
+            addresses.add(device.address)
+            discover(device.address)
+        decoded_service_data = decode(service_data)
+        publish(device.address, decoded_service_data)
+        devices_data[device.address] = decoded_service_data
 
 
 def mqtt_connect():
@@ -83,26 +89,17 @@ def mqtt_connect():
     def _on_connect(client, _, flags, return_code):
         global mqtt_connected
         mqtt_connected = True
-        if debug_level == 1:
-            print(
-                "on_connect: MQTT connection returned result: %s"
-                % mqtt.connack_string(return_code)
-            )
+        logger.info("MQTT connected: %s" % mqtt.connack_string(return_code))
 
     def _on_disconnect(client, userdata, return_code):
         if return_code != 0:
-            print("Unexpected disconnection: " + return_code)
-        else:
-            print("Disconnected.")
+            logger.critical("MQTT Client disconnected with code: %d", return_code)
 
     def _on_publish(client, userdata, mid):
-        if debug_level == 1:
-            info = "on_publish: {}, {}, {}".format(client, userdata, str(mid))
-            print(info)
+        pass
 
     def _on_log(mqttc, obj, level, string):
-        if debug_level == 1:
-            print("on_log: " + string)
+        logger.info("%s %s" % (level, string))
 
     mqtt_client.on_connect = _on_connect
     mqtt_client.on_publish = _on_publish
@@ -112,13 +109,34 @@ def mqtt_connect():
     mqtt_client.loop_start()
 
 
+def discover(address):
+    """
+    https://www.home-assistant.io/docs/mqtt/discovery/
+    """
+
+    address_formatted = address.replace(":", "")
+    # discovery_prefix>/<component>/[<node_id>/]<object_id>/config
+    topic_temperature = "homeassistant/sensor/%s_T/config" % address_formatted
+
+    message = {
+        "device_class": "temperature",
+        "name": "%s_T" % address_formatted,
+        "state_topic": "homeassistant/sensor/%s_T/state" % address_formatted,
+        "unit_of_measurement": "°C",
+        "unique_id": "%s_T" % address_formatted,
+        "value_template": "{{ value_json.raw_values.temperature_value }}",
+    }
+
+    mqtt_client.publish(topic_temperature, json.dumps(message), qos=0, retain=True)
+
+
 def publish(address, data):
     try:
-        room = "baby"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         data["timestamp"] = timestamp
         message = json.dumps(data)
-        topic = "{}/{}".format(room.lower(), "meter")
+        address_formatted = address.replace(":", "")
+        topic = "homeassistant/sensor/%s_T/state" % address_formatted
         MQTT_TOPIC_STACK.add(topic)
         MQTT_PAYLOAD_STACK.add(message)
         if mqtt_client:
@@ -126,18 +144,11 @@ def publish(address, data):
                 t = MQTT_TOPIC_STACK.pop()
                 p = MQTT_PAYLOAD_STACK.pop()
                 if len(t) > 0:
-                    if debug_level == 1:
-                        print(
-                            "STACK {} {} {} {}".format(
-                                str(len(MQTT_TOPIC_STACK)), timestamp, t, p
-                            )
-                        )
                     mqtt_client.publish(t, p, qos=0, retain=True)
-                    print("Sent data to topic %s: %s " % (topic, message))
         else:
-            print("not sending")
+            logger.warn("MQTT publish: can't send, no client")
     except Exception:
-        print("publish: Oops!")
+        logger.warn("MQTT publish: exception while sending")
         traceback.print_exc()
 
 
@@ -146,14 +157,14 @@ async def scan():
     scanner = BleakScanner()
     scanner.register_detection_callback(detection_callback)
     await scanner.start()
-    while len(devices_data) != len(addresses):
+    while True:
         await asyncio.sleep(0.10)
     await scanner.stop()
 
 
 async def main():
     try:
-        await asyncio.wait_for(scan(), timeout=120.0)
+        await asyncio.wait_for(scan(), timeout=1200.0)
         print(json.dumps(devices_data, indent=2))
         await asyncio.sleep(5)
     except asyncio.TimeoutError:
