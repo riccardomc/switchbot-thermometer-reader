@@ -55,8 +55,10 @@ def detection_callback(device, data):
     service_data = data.service_data.get(service_data_id)
     if service_data:
         if device.address not in addresses:
-            logger.info("found new device: %s" % device.address)
+            logger.info(f"found : {device.address} (new)")
             addresses.add(device.address)
+        else:
+            logger.info(f"found : {device.address}")
         decoded_service_data = decode(service_data)
         devices_data[device.address] = decoded_service_data
 
