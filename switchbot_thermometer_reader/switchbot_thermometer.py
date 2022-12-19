@@ -1,5 +1,4 @@
 import asyncio
-import json
 
 from bleak import BleakScanner
 
@@ -64,13 +63,12 @@ def detection_callback(device, data):
 
 
 async def scan(scanner, sleep_interval=5):
-    scanner.register_detection_callback(detection_callback)
     await scanner.start()
     await asyncio.sleep(sleep_interval)
     await scanner.stop()
 
 
-scanner = BleakScanner()
+scanner = BleakScanner(detection_callback=detection_callback)
 
 
 async def main():
@@ -90,9 +88,5 @@ async def main():
             logger.info(f"dumps : {last_data}")
             logger.info(f"target: {target_mac in devices_data.keys()}")
             devices_data.clear()
-            await asyncio.sleep(0.1)
         except asyncio.TimeoutError:
             print("got no devices")
-
-
-asyncio.run(main())
