@@ -70,13 +70,29 @@ async def scan(scanner, sleep_interval=5):
     await scanner.stop()
 
 
+scanner = BleakScanner()
+
+
 async def main():
+    target_mac = "C7:EB:E0:FC:87:08"
     while True:
         try:
-            await asyncio.wait_for(scan(), timeout=10)
-            print(json.dumps(devices_data, indent=2))
-            await asyncio.sleep(5)
+            await asyncio.wait_for(scan(scanner), timeout=10)
+
+            last_data = sorted(
+                (
+                    [
+                        (k, v["human_readable"]["temperature"])
+                        for k, v in devices_data.items()
+                    ]
+                )
+            )
+            logger.info(f"dumps : {last_data}")
+            logger.info(f"target: {target_mac in devices_data.keys()}")
+            devices_data.clear()
+            await asyncio.sleep(0.1)
         except asyncio.TimeoutError:
             print("got no devices")
+
 
 asyncio.run(main())
