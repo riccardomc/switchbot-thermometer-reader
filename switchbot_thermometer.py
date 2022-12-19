@@ -55,30 +55,44 @@ def detection_callback(device, data):
     service_data = data.service_data.get(service_data_id)
     if service_data:
         if device.address not in addresses:
-            logger.info("found new device: %s" % device.address)
+            logger.info(f"found : {device.address} (new)")
             addresses.add(device.address)
+        else:
+            logger.info(f"found : {device.address}")
         decoded_service_data = decode(service_data)
         devices_data[device.address] = decoded_service_data
 
 
-async def scan(time=10, sleep_interval=0.10):
-    scanner = BleakScanner()
+async def scan(scanner, sleep_interval=5):
     scanner.register_detection_callback(detection_callback)
     await scanner.start()
-    count_down = time
-    while count_down > 0:
-        await asyncio.sleep(sleep_interval)
-        count_down -= sleep_interval
+    await asyncio.sleep(sleep_interval)
     await scanner.stop()
 
 
+scanner = BleakScanner()
+
+
 async def main():
+    target_mac = "C7:EB:E0:FC:87:08"
     while True:
         try:
-            await asyncio.wait_for(scan(), timeout=10)
-            print(json.dumps(devices_data, indent=2))
-            await asyncio.sleep(5)
+            await asyncio.wait_for(scan(scanner), timeout=10)
+
+            last_data = sorted(
+                (
+                    [
+                        (k, v["human_readable"]["temperature"])
+                        for k, v in devices_data.items()
+                    ]
+                )
+            )
+            logger.info(f"dumps : {last_data}")
+            logger.info(f"target: {target_mac in devices_data.keys()}")
+            devices_data.clear()
+            await asyncio.sleep(0.1)
         except asyncio.TimeoutError:
             print("got no devices")
+
 
 asyncio.run(main())
