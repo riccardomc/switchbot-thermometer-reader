@@ -63,14 +63,10 @@ def detection_callback(device, data):
         devices_data[device.address] = decoded_service_data
 
 
-async def scan(time=10, sleep_interval=0.10):
-    scanner = BleakScanner()
+async def scan(scanner, sleep_interval=5):
     scanner.register_detection_callback(detection_callback)
     await scanner.start()
-    count_down = time
-    while count_down > 0:
-        await asyncio.sleep(sleep_interval)
-        count_down -= sleep_interval
+    await asyncio.sleep(sleep_interval)
     await scanner.stop()
 
 
